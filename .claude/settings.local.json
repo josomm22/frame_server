@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(node -e \"const j=require\\('./credentials.json'\\); console.log\\('top-level keys:', Object.keys\\(j\\)\\); const inner=j.installed||j.web||j; console.log\\('inner keys:', Object.keys\\(inner\\)\\); console.log\\('has client_id:', !!inner.client_id\\); console.log\\('has client_secret:', !!inner.client_secret\\); console.log\\('has redirect_uris:', !!inner.redirect_uris, Array.isArray\\(inner.redirect_uris\\)?inner.redirect_uris.length+' entries':''\\);\")",
+      "Bash(node -e \"const j=require\\('./credentials.json'\\); console.log\\('top-level keys:', Object.keys\\(j\\)\\); const inner=j.installed||j.web||j; console.log\\('wrapper:', j.installed?'installed':j.web?'web':'\\(none\\)'\\); console.log\\('inner keys:', Object.keys\\(inner\\).sort\\(\\)\\); console.log\\('client_id present:', !!inner.client_id\\); console.log\\('client_secret present:', !!inner.client_secret\\); console.log\\('redirect_uris:', inner.redirect_uris\\);\")"
+    ]
+  }
+}

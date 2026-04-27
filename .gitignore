@@ -1,0 +1,7 @@
+credentials.json
+node_modules/
+data/
+dist/
+vendor/
+.env
+*.log
