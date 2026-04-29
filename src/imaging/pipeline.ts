@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { aitjcizeSpectra6, type PaletteEntry } from './palette.js';
 import {
@@ -13,6 +14,7 @@ import {
   type ErrorDiffusionOptions,
 } from './dither.js';
 import { replaceColors } from './replaceColors.js';
+import { packDeviceColors, type PackFormat } from './pack.js';
 
 export type PipelineStage =
   | 'resized'
@@ -81,6 +83,31 @@ export const processImage = async (
   if (cfg.onStage) await cfg.onStage('deviceColors', cloneImage(img));
 
   return img;
+};
+
+export interface ProcessToPackedOptions {
+  config?: PipelineConfig;
+  format?: PackFormat;
+}
+
+export interface ProcessToPackedResult {
+  packed: Buffer;
+  format: PackFormat;
+  /** 16-hex sha256 prefix of the input bytes — used as queue filename. */
+  hash: string;
+  unmatched: number;
+}
+
+export const processToPacked = async (
+  input: Buffer,
+  opts: ProcessToPackedOptions = {},
+): Promise<ProcessToPackedResult> => {
+  const config = opts.config ?? defaultConfig;
+  const format: PackFormat = opts.format ?? 'nibble4bpp';
+  const finalImage = await processImage(input, config);
+  const { buffer: packed, unmatched } = packDeviceColors(finalImage, config.palette, format);
+  const hash = createHash('sha256').update(input).digest('hex').slice(0, 16);
+  return { packed, format, hash, unmatched };
 };
 
 export const imageToPng = async (img: Image): Promise<Buffer> => {
