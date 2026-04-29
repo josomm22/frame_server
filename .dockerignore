@@ -1,0 +1,16 @@
+node_modules
+dist
+data
+vendor
+.git
+.gitignore
+.github
+ARCHITECTURE.md
+README.md
+*.md
+.env
+.dockerignore
+Dockerfile
+docker-compose.yml
+credentials.json
+*.log

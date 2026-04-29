@@ -9,7 +9,9 @@
   "scripts": {
     "pick": "tsx src/cli/pick.ts",
     "process": "tsx src/cli/process.ts",
-    "server": "tsx src/server.ts"
+    "server": "tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
