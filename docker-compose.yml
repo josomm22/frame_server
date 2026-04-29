@@ -1,0 +1,15 @@
+# Compose file targets Synology DS713+ deployment. See ARCHITECTURE.md.
+# Volume paths are absolute with volume number (DSM 7.1 requirement).
+# For local dev testing, use `docker run` directly with your own paths.
+
+services:
+  eink-frame:
+    build: .
+    image: eink-frame:latest
+    container_name: eink-frame
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - /volume1/docker/eink-frame/data:/app/data
+      - /volume1/docker/eink-frame/credentials.json:/app/credentials.json:ro
