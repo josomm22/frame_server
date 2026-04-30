@@ -1,5 +1,9 @@
 # Compose file targets Synology DS713+ deployment. See ARCHITECTURE.md.
 # Volume paths are absolute with volume number (DSM 7.1 requirement).
+# network_mode: host because DSM 7.1's legacy Docker on the DS713+ kernel has
+# unreliable bridge/NAT setup — bridge mode causes a container restart loop.
+# Host mode binds 8765 directly on the NAS, which is what the LAN-only design
+# wants anyway. Means no `ports:` mapping (incompatible with host mode).
 # For local dev testing, use `docker run` directly with your own paths.
 
 services:
@@ -8,8 +12,7 @@ services:
     image: eink-frame:latest
     container_name: eink-frame
     restart: unless-stopped
-    ports:
-      - "8765:8765"
+    network_mode: host
     volumes:
       - /volume1/docker/eink-frame/data:/app/data
       - /volume1/docker/eink-frame/credentials.json:/app/credentials.json:ro
