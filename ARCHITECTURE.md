@@ -232,6 +232,7 @@ buffer) so visual regressions are easy to spot.
 3. **SSH must be enabled** for initial deploy: Control Panel → Terminal & SNMP → Enable SSH.
 4. **DSM uses many ports.** Project uses **8765**. Avoid 5000, 5001, 80, 443, 6690.
 5. **Build for x86_64.** DS713+ is Intel x86_64. If developing on Apple Silicon, build with `--platform linux/amd64` or use buildx, otherwise images won't run on the NAS.
+6. **Use `network_mode: host`.** Bridge networking is unreliable on the DS713+ kernel under DSM 7.1's legacy Docker — the bridge/NAT setup intermittently fails and the container ends up in a restart loop. Host mode sidesteps the bridge entirely and binds 8765 directly on the NAS, which is what the LAN-only design wants. `ports:` mappings are incompatible with host mode and must be removed.
 
 ## Out of scope for v1
 

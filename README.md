@@ -76,8 +76,11 @@ container.
 
 ## Synology DS713+ deploy
 
-The committed `docker-compose.yml` targets DSM 7.1's legacy Docker package and
-uses absolute volume paths (DSM requirement).
+The committed `docker-compose.yml` targets DSM 7.1's legacy Docker package,
+uses absolute volume paths (DSM requirement), and runs with
+`network_mode: host` because bridge networking is unreliable on the DS713+
+kernel and was causing a container restart loop. With host mode, the service
+binds port 8765 directly on the NAS — no `ports:` mapping needed.
 
 ```bash
 # On the NAS (SSH enabled in DSM Control Panel):
