@@ -74,28 +74,25 @@ Note: OAuth's first-run flow expects a browser. Authenticate locally with
 `npm run pick` first so `data/tokens.json` exists, then mount `data/` into the
 container.
 
-## Synology DS713+ deploy
-
-The committed `docker-compose.yml` targets DSM 7.1's legacy Docker package,
-uses absolute volume paths (DSM requirement), and runs with
-`network_mode: host` because bridge networking is unreliable on the DS713+
-kernel and was causing a container restart loop. With host mode, the service
-binds port 8765 directly on the NAS — no `ports:` mapping needed.
+## Raspberry Pi 4 deploy
 
 ```bash
-# On the NAS (SSH enabled in DSM Control Panel):
-sudo mkdir -p /volume1/docker/eink-frame/data
-sudo cp credentials.json /volume1/docker/eink-frame/credentials.json
-sudo cp data/tokens.json /volume1/docker/eink-frame/data/tokens.json  # if pre-authed
+# On the Pi — clone the repo, copy credentials, pre-auth if possible
+git clone <repo> ~/eink-frame && cd ~/eink-frame
+cp /path/to/credentials.json .
+cp /path/to/data/tokens.json data/tokens.json  # if pre-authed locally
 
-# From the repo on the NAS:
-sudo docker-compose up -d --build
+docker compose up -d --build
 ```
 
-Then visit `http://<nas-ip>:8765` from a phone on the same network.
+Then visit `http://<pi-ip>:8765` from a phone on the same network.
 
-If you build images on Apple Silicon for the DS713+, target x86_64:
-`docker buildx build --platform linux/amd64 ...`.
+The compose file uses relative paths (`./data`, `./credentials.json`) so it
+works from whatever directory you clone into. Run `docker compose` from the
+repo root.
+
+Building on Apple Silicon for the Pi 4 (both ARM64) requires no
+`--platform` flag — the image is native on both sides.
 
 ## Data layout
 

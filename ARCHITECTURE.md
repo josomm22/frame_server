@@ -1,6 +1,6 @@
 # eink-frame — Architecture & Handoff
 
-A digital photo frame system: Google Photos → Synology NAS server → custom-firmware
+A digital photo frame system: Google Photos → Raspberry Pi 4 server → custom-firmware
 e-paper frame over LAN.
 
 This document captures all decisions made before code was written, so future work
@@ -19,17 +19,14 @@ doesn't re-litigate them.
 
 **Server side**
 
-- Synology DS713+ (Intel Atom CE5335, x86_64, 2 GB RAM, 2013 hardware)
-- DSM 7.1.1-42962 Update 9 (terminal release for this model — Synology will not
-  ship DSM 7.2/7.3 for the 713+)
-- Container runtime: legacy **Docker** package from Package Center
-  (Container Manager is DSM 7.2+ only, so it is not available)
-- Available headroom: ~1.2-1.4 GB free RAM at typical idle
+- Raspberry Pi 4 Model B (4 GB RAM, ARM64/aarch64)
+- Raspberry Pi OS (64-bit) or Ubuntu 22.04 LTS ARM64
+- Container runtime: Docker CE (standard bridge networking)
 
 ## High-level flow
 
 ```
-[User on phone]                    [Synology DS713+]                 [EE02 frame]
+[User on phone]                    [Raspberry Pi 4]                  [EE02 frame]
       |                                   |                                |
       |---- visits http://nas:8765 ------>|                                |
       |<--- "Refresh" page + QR code -----|                                |
@@ -80,17 +77,14 @@ deliberate human action triggered every few weeks from a phone.
   that the user found and validated visually. Using it directly avoids a
   cross-language port.
 
-### Why Docker (not the DSM Node.js package)
+### Why Docker (not bare Node on the Pi)
 
-- DSM 7.1's native Node package is locked to v18 and ages out as Synology
-  decides.
-- `node-canvas` requires system libraries (Cairo, Pango, libjpeg, libgif,
-  librsvg) that are awkward to install on bare DSM — no apt, Entware hacks
-  break across DSM updates.
-- Container brings its own Node version and its own system libraries. Host
-  DSM version becomes irrelevant.
-- Docker package on DSM 7.1 supports compose, volume mounts, restart policies —
-  everything needed. Just a clunkier UI than Container Manager.
+- Container pins the Node version and all system libraries (libvips for sharp,
+  etc.) independently of the host OS. Pi OS upgrades don't break the app.
+- Restart policy, volume management, and deployment are handled by compose —
+  no systemd unit file needed.
+- Same Dockerfile runs on the dev machine and the Pi (both ARM64 when developing
+  on Apple Silicon; add `--platform linux/amd64` only if developing on x86_64).
 
 ### Why an in-house port of epdoptimize (not the npm dep, not a custom-from-scratch ditherer)
 
@@ -176,7 +170,7 @@ Optional: `node-cron` if a periodic cleanup or token-refresh task is wanted.
 
 ### Persistent data
 
-Container path `/app/data` ← bind-mounted from host `/volume1/docker/eink-frame/data`.
+Container path `/app/data` ← bind-mounted from host `./data` (relative to repo root on the Pi).
 
 ```
 /app/data/
@@ -225,14 +219,14 @@ buffer) so visual regressions are easy to spot.
 - ESP32 reads bytes directly into panel buffer, triggers refresh, deep sleeps.
 - 720 KB transfer over WiFi is trivial compared to the 12-second panel refresh.
 
-## Synology-specific gotchas
+## Raspberry Pi 4 deployment notes
 
-1. **Volume paths must include the volume number.** Compose `/volume1/docker/eink-frame/data:/app/data`, not `~/docker/...` or relative paths.
-2. **DSM 7.1 Docker GUI has no "Project" tab.** Manage compose via SSH and `docker-compose` CLI. Docker GUI is for browsing containers and viewing logs only.
-3. **SSH must be enabled** for initial deploy: Control Panel → Terminal & SNMP → Enable SSH.
-4. **DSM uses many ports.** Project uses **8765**. Avoid 5000, 5001, 80, 443, 6690.
-5. **Build for x86_64.** DS713+ is Intel x86_64. If developing on Apple Silicon, build with `--platform linux/amd64` or use buildx, otherwise images won't run on the NAS.
-6. **Use `network_mode: host`.** Bridge networking is unreliable on the DS713+ kernel under DSM 7.1's legacy Docker — the bridge/NAT setup intermittently fails and the container ends up in a restart loop. Host mode sidesteps the bridge entirely and binds 8765 directly on the NAS, which is what the LAN-only design wants. `ports:` mappings are incompatible with host mode and must be removed.
+1. **Enable SSH** on first boot (via raspi-config or the imager's advanced settings) for headless access.
+2. **Install Docker CE** — use the official convenience script or the apt repo; avoid the snap version.
+3. **64-bit OS required.** `node:20-alpine` on ARM64 needs a 64-bit kernel. Use Raspberry Pi OS (64-bit) or Ubuntu 22.04 LTS ARM64.
+4. **Port 8765 is free** on a stock Pi OS. No reserved-port conflicts to worry about.
+5. **Apple Silicon dev builds natively.** Both the Pi 4 and M-series Macs are ARM64, so the same image runs on both without a `--platform` flag. Only x86_64 dev machines need `--platform linux/arm64/v8`.
+6. **Bridge networking works normally.** The `ports:` mapping in compose is all that's needed — no `network_mode: host` required.
 
 ## Out of scope for v1
 
@@ -247,7 +241,7 @@ buffer) so visual regressions are easy to spot.
 
 ## Development workflow
 
-1. Develop and test locally on x86_64 dev machine. Don't develop on the NAS.
+1. Develop and test locally on the dev machine. Don't develop on the Pi.
 2. End-to-end milestones, in order:
    - **Milestone 1**: CLI script — create picker session, print URL, poll, download bytes. No Express, no Docker yet. Validates Google's flow.
    - **Milestone 2**: Add the image pipeline. Process one downloaded photo end-to-end into a `.bin` file. Verify visually as PNG before binary packing.
