@@ -72,44 +72,26 @@ container.
 
 ## Raspberry Pi 4 deploy
 
-Requires SSH access to the Pi and Docker CE installed on it.
-Override the default hostname with `PI=user@host` on any target.
-
-**First time:**
+**First time** (from dev machine):
 
 ```bash
-# Authenticate locally so tokens.json is ready to copy
-npm run pick
-
+npm run pick   # authenticate locally so tokens.json is ready to copy
 make deploy-init                          # uses pi@raspberrypi.local
-# or: make deploy-init PI=pi@192.168.1.x
+# or: make deploy-init PI=user@192.168.1.x
 ```
 
-This clones the repo on the Pi, copies `credentials.json` and `data/tokens.json`,
+Clones the repo on the Pi, copies `credentials.json` and `data/tokens.json`,
 builds the image on the Pi, and starts the container.
 
-**Subsequent updates** (after `git push`):
+**Updating** (SSH into the Pi):
 
 ```bash
-make deploy
+git pull
+bash scripts/deploy.sh
 ```
 
-**After re-authenticating** (tokens expired):
-
-```bash
-npm run pick   # re-auth locally
-make push-creds
-```
-
-**Check for updates and rebuild only if needed:**
-
-```bash
-make update
-```
-
-Fetches origin, compares the Pi's `HEAD` to the upstream branch, and only
-pulls and rebuilds if there's something new. Safe to run at any time — if
-already up to date it exits immediately without touching the container.
+Data lives in `~/eink-frame/data/` — tokens, queue `.bin` files, and cached
+JPEGs are all there, separate from the code.
 
 Then visit `http://<pi-ip>:8765` from a phone on the same network.
 
