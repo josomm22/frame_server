@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Checks whether the local repo is behind its upstream and, if so, pulls and
-# rebuilds the container. Designed to run as a cron job on the Pi.
-# Logs are written to data/update.log (appended by cron redirection).
+# rebuilds the container. Run via: make update
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"

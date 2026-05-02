@@ -101,15 +101,15 @@ npm run pick   # re-auth locally
 make push-creds
 ```
 
-**Auto-update via cron** (optional):
+**Check for updates and rebuild only if needed:**
 
 ```bash
-make install-cron
+make update
 ```
 
-Installs an hourly cron job on the Pi that runs `scripts/update.sh`. The script
-fetches from origin, compares HEAD to its upstream, and only pulls and rebuilds
-when there's an actual change. Output is appended to `data/update.log`.
+Fetches origin, compares the Pi's `HEAD` to the upstream branch, and only
+pulls and rebuilds if there's something new. Safe to run at any time — if
+already up to date it exits immediately without touching the container.
 
 Then visit `http://<pi-ip>:8765` from a phone on the same network.
 
