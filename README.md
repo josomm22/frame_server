@@ -63,36 +63,48 @@ All LAN-only, no auth.
 ## Docker (local test)
 
 ```bash
-docker build -t eink-frame:latest .
-docker run --rm -p 8765:8765 \
-  -v "$PWD/data":/app/data \
-  -v "$PWD/credentials.json":/app/credentials.json:ro \
-  eink-frame:latest
+make run
 ```
 
-Note: OAuth's first-run flow expects a browser. Authenticate locally with
-`npm run pick` first so `data/tokens.json` exists, then mount `data/` into the
+OAuth's first-run flow expects a browser — authenticate with `npm run pick`
+first so `data/tokens.json` exists, then `make run` mounts `data/` into the
 container.
 
 ## Raspberry Pi 4 deploy
 
-```bash
-# On the Pi — clone the repo, copy credentials, pre-auth if possible
-git clone <repo> ~/eink-frame && cd ~/eink-frame
-cp /path/to/credentials.json .
-cp /path/to/data/tokens.json data/tokens.json  # if pre-authed locally
+Requires SSH access to the Pi and Docker CE installed on it.
+Override the default hostname with `PI=user@host` on any target.
 
-docker compose up -d --build
+**First time:**
+
+```bash
+# Authenticate locally so tokens.json is ready to copy
+npm run pick
+
+make deploy-init                          # uses pi@raspberrypi.local
+# or: make deploy-init PI=pi@192.168.1.x
+```
+
+This clones the repo on the Pi, copies `credentials.json` and `data/tokens.json`,
+builds the image on the Pi, and starts the container.
+
+**Subsequent updates** (after `git push`):
+
+```bash
+make deploy
+```
+
+**After re-authenticating** (tokens expired):
+
+```bash
+npm run pick   # re-auth locally
+make push-creds
 ```
 
 Then visit `http://<pi-ip>:8765` from a phone on the same network.
 
-The compose file uses relative paths (`./data`, `./credentials.json`) so it
-works from whatever directory you clone into. Run `docker compose` from the
-repo root.
-
-Building on Apple Silicon for the Pi 4 (both ARM64) requires no
-`--platform` flag — the image is native on both sides.
+The image builds natively on the Pi (ARM64). No cross-compilation or
+`--platform` flag needed, even when developing on Apple Silicon.
 
 ## Data layout
 
