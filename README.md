@@ -101,6 +101,16 @@ npm run pick   # re-auth locally
 make push-creds
 ```
 
+**Auto-update via cron** (optional):
+
+```bash
+make install-cron
+```
+
+Installs an hourly cron job on the Pi that runs `scripts/update.sh`. The script
+fetches from origin, compares HEAD to its upstream, and only pulls and rebuilds
+when there's an actual change. Output is appended to `data/update.log`.
+
 Then visit `http://<pi-ip>:8765` from a phone on the same network.
 
 The image builds natively on the Pi (ARM64). No cross-compilation or

@@ -1,7 +1,7 @@
 PI       ?= pi@raspberrypi.local
 REPO_URL := $(shell git remote get-url origin)
 
-.PHONY: build run push-creds deploy-init deploy
+.PHONY: build run push-creds deploy-init deploy install-cron
 
 # Build image locally (dev / smoke-test)
 build:
@@ -34,3 +34,9 @@ push-creds:
 # Pull latest code on Pi and rebuild the container
 deploy:
 	ssh $(PI) "cd ~/eink-frame && git pull && docker compose up -d --build"
+
+# Install an hourly update check on the Pi via cron
+# Override frequency by editing the cron expression, e.g.: CRON="*/30 * * * *"
+CRON ?= 0 * * * *
+install-cron:
+	ssh $(PI) '(crontab -l 2>/dev/null | grep -v eink-frame/scripts/update; echo "$(CRON) $$HOME/eink-frame/scripts/update.sh >> $$HOME/eink-frame/data/update.log 2>&1") | crontab -'
