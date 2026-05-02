@@ -63,39 +63,40 @@ All LAN-only, no auth.
 ## Docker (local test)
 
 ```bash
-docker build -t eink-frame:latest .
-docker run --rm -p 8765:8765 \
-  -v "$PWD/data":/app/data \
-  -v "$PWD/credentials.json":/app/credentials.json:ro \
-  eink-frame:latest
+make run
 ```
 
-Note: OAuth's first-run flow expects a browser. Authenticate locally with
-`npm run pick` first so `data/tokens.json` exists, then mount `data/` into the
+OAuth's first-run flow expects a browser — authenticate with `npm run pick`
+first so `data/tokens.json` exists, then `make run` mounts `data/` into the
 container.
 
-## Synology DS713+ deploy
+## Raspberry Pi 4 deploy
 
-The committed `docker-compose.yml` targets DSM 7.1's legacy Docker package,
-uses absolute volume paths (DSM requirement), and runs with
-`network_mode: host` because bridge networking is unreliable on the DS713+
-kernel and was causing a container restart loop. With host mode, the service
-binds port 8765 directly on the NAS — no `ports:` mapping needed.
+**First time** (from dev machine):
 
 ```bash
-# On the NAS (SSH enabled in DSM Control Panel):
-sudo mkdir -p /volume1/docker/eink-frame/data
-sudo cp credentials.json /volume1/docker/eink-frame/credentials.json
-sudo cp data/tokens.json /volume1/docker/eink-frame/data/tokens.json  # if pre-authed
-
-# From the repo on the NAS:
-sudo docker-compose up -d --build
+npm run pick   # authenticate locally so tokens.json is ready to copy
+make deploy-init                          # uses pi@raspberrypi.local
+# or: make deploy-init PI=user@192.168.1.x
 ```
 
-Then visit `http://<nas-ip>:8765` from a phone on the same network.
+Clones the repo on the Pi, copies `credentials.json` and `data/tokens.json`,
+builds the image on the Pi, and starts the container.
 
-If you build images on Apple Silicon for the DS713+, target x86_64:
-`docker buildx build --platform linux/amd64 ...`.
+**Updating** (SSH into the Pi):
+
+```bash
+git pull
+bash scripts/deploy.sh
+```
+
+Data lives in `~/eink-frame/data/` — tokens, queue `.bin` files, and cached
+JPEGs are all there, separate from the code.
+
+Then visit `http://<pi-ip>:8765` from a phone on the same network.
+
+The image builds natively on the Pi (ARM64). No cross-compilation or
+`--platform` flag needed, even when developing on Apple Silicon.
 
 ## Data layout
 
