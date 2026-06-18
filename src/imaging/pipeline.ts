@@ -38,8 +38,13 @@ export const defaultConfig: Omit<PipelineConfig, 'onStage'> = {
   width: 1600,
   height: 1200,
   palette: aitjcizeSpectra6,
-  toneMapping: { mode: 'contrast', exposure: 1, saturation: 1, contrast: 1 },
-  dynamicRangeCompression: { mode: 'display', strength: 1 },
+  // Six-colour dithering desaturates and the panel can't reach bright white, so
+  // pre-boost saturation/contrast and lift exposure to counter the "dark & dull"
+  // look. Tune these against /preview/simulate per panel.
+  toneMapping: { mode: 'contrast', exposure: 1.06, saturation: 1.35, contrast: 1.08 },
+  // strength 1 crushed highlights down to the dim calibrated white (L*≈79)
+  // before dithering; 0.6 keeps brights closer to true white.
+  dynamicRangeCompression: { mode: 'display', strength: 0.6 },
   diffusion: { matrix: floydSteinberg, serpentine: true, colorMatching: 'lab' },
 };
 
@@ -100,7 +105,7 @@ export const processImage = async (
  * comes out mirrored. (This is the server-side counterpart of the firmware's
  * "Color remap orientation" / mirrored-image caveat.)
  */
-export const PANEL_ROTATION: 90 | 270 = 90;
+export const PANEL_ROTATION: 90 | 270 = 270;
 export const PANEL_FLIP = false;
 
 /**
