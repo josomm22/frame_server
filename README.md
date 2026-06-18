@@ -22,7 +22,8 @@ operations-only.
    add your own Google account as a test user.
 4. Create an **OAuth client ID** of type **Desktop app**.
 5. Download the JSON and save it as `credentials.json` in the repo root
-   (gitignored).
+   (gitignored). See `credentials.example.json` for the expected shape — the
+   downloaded file uses the same `installed` (Desktop app) structure.
 
 While the consent screen stays in Testing, refresh tokens expire after 7 days.
 For long-term use either submit for verification or accept weekly re-auth.
@@ -77,27 +78,51 @@ container.
 ## Zimaboard 2 deploy
 
 The committed `docker-compose.yml` targets the Zimaboard 2 running ZimaOS
-(Debian-based, modern Docker engine). It uses standard bridge networking with a
-`ports:` mapping and relative volume paths that resolve against the repo
-directory — no DSM-style absolute paths or `network_mode: host` workarounds.
+(Debian-based, modern Docker engine), with standard bridge networking and a
+`ports:` mapping — no DSM-style `network_mode: host` workaround.
+
+**Two separate locations** (this is the part that trips people up):
+
+- **Repo / build context** — the cloned source + Dockerfile. Docker only reads
+  it at `build` time; nothing is written here at runtime. Clone it anywhere
+  persistent (e.g. `/DATA/eink-frame`). Safe to delete and re-clone.
+- **Persistent data** — `/DATA/AppData/eink-frame/`, ZimaOS's AppData folder.
+  This is where `tokens.json`, the `.bin` queue, and `credentials.json` live,
+  bind-mounted into the container. It survives image rebuilds and re-clones, and
+  it's the only thing you back up. The compose file hardcodes this path.
 
 ```bash
 # On the Zimaboard (SSH enabled, or use the ZimaOS terminal app):
-# Clone or copy the repo somewhere persistent, e.g. under /DATA:
+
+# 1) Clone the repo (build context) somewhere persistent:
+git clone <repo-url> /DATA/eink-frame
 cd /DATA/eink-frame
 
-# Place secrets next to the compose file:
-cp /path/to/credentials.json ./credentials.json
-mkdir -p data
-cp /path/to/tokens.json ./data/tokens.json   # if pre-authed
+# 2) Create the AppData data dir and drop in secrets:
+mkdir -p /DATA/AppData/eink-frame/data
 
+# Seed an example credentials.json into AppData, then edit it with your real
+# Google OAuth client values (or replace it with the file you downloaded):
+cp credentials.example.json /DATA/AppData/eink-frame/credentials.json
+# nano /DATA/AppData/eink-frame/credentials.json   # fill in client_id / client_secret
+
+cp /path/to/tokens.json /DATA/AppData/eink-frame/data/tokens.json   # if pre-authed
+
+# 3) Build + run:
 docker compose up -d --build
 ```
 
 Then visit `http://<zimaboard-ip>:8765` from a phone on the same network.
 
+To deploy a new version later, just `git pull` in the repo dir and re-run
+`docker compose up -d --build`; the AppData volume is untouched.
+
 The Zimaboard 2 is x86_64 (Intel N150). If you build images on Apple Silicon,
 target x86_64: `docker buildx build --platform linux/amd64 ...`.
+
+> If you'd rather keep eink-frame's data somewhere other than
+> `/DATA/AppData/eink-frame`, change both volume paths in `docker-compose.yml`
+> to match.
 
 ## Data layout
 

@@ -195,8 +195,8 @@ Optional: `node-cron` if a periodic cleanup or token-refresh task is wanted.
 
 ### Persistent data
 
-Container path `/app/data` ← bind-mounted from the host `./data` next to the
-compose file (e.g. `/DATA/eink-frame/data` on ZimaOS).
+Container path `/app/data` ← bind-mounted from ZimaOS AppData
+(`/DATA/AppData/eink-frame/data`), independent of where the repo is cloned.
 
 ```
 /app/data/
@@ -247,10 +247,11 @@ buffer) so visual regressions are easy to spot.
 
 ## Zimaboard 2 / ZimaOS notes
 
-1. **Put `data/` and `credentials.json` next to the compose file.** The compose
-   uses relative bind mounts (`./data`, `./credentials.json`), so clone the repo
-   somewhere persistent — `/DATA` is ZimaOS's storage root, e.g.
-   `/DATA/eink-frame`.
+1. **Code location and data location are separate.** The cloned repo is only the
+   build context (clone it anywhere persistent, e.g. `/DATA/eink-frame`).
+   Persistent data and `credentials.json` live in ZimaOS AppData at
+   `/DATA/AppData/eink-frame/`, which the compose mounts via absolute paths — so
+   the data survives re-clones and image rebuilds.
 2. **Manage compose via SSH or the ZimaOS terminal app.** `docker compose up -d
    --build` from the repo directory. ZimaOS can also adopt/manage the running
    container from its app/container UI.
