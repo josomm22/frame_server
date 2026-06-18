@@ -11,7 +11,7 @@ operations-only.
 ## Prerequisites
 
 - Node.js 20+ (for local dev)
-- Docker + docker compose (for container runs / NAS deploy)
+- Docker + docker compose (for container runs / Zimaboard deploy)
 - A Google Cloud project with OAuth credentials (see below)
 
 ## One-time Google Cloud setup
@@ -74,28 +74,30 @@ Note: OAuth's first-run flow expects a browser. Authenticate locally with
 `npm run pick` first so `data/tokens.json` exists, then mount `data/` into the
 container.
 
-## Synology DS713+ deploy
+## Zimaboard 2 deploy
 
-The committed `docker-compose.yml` targets DSM 7.1's legacy Docker package,
-uses absolute volume paths (DSM requirement), and runs with
-`network_mode: host` because bridge networking is unreliable on the DS713+
-kernel and was causing a container restart loop. With host mode, the service
-binds port 8765 directly on the NAS — no `ports:` mapping needed.
+The committed `docker-compose.yml` targets the Zimaboard 2 running ZimaOS
+(Debian-based, modern Docker engine). It uses standard bridge networking with a
+`ports:` mapping and relative volume paths that resolve against the repo
+directory — no DSM-style absolute paths or `network_mode: host` workarounds.
 
 ```bash
-# On the NAS (SSH enabled in DSM Control Panel):
-sudo mkdir -p /volume1/docker/eink-frame/data
-sudo cp credentials.json /volume1/docker/eink-frame/credentials.json
-sudo cp data/tokens.json /volume1/docker/eink-frame/data/tokens.json  # if pre-authed
+# On the Zimaboard (SSH enabled, or use the ZimaOS terminal app):
+# Clone or copy the repo somewhere persistent, e.g. under /DATA:
+cd /DATA/eink-frame
 
-# From the repo on the NAS:
-sudo docker-compose up -d --build
+# Place secrets next to the compose file:
+cp /path/to/credentials.json ./credentials.json
+mkdir -p data
+cp /path/to/tokens.json ./data/tokens.json   # if pre-authed
+
+docker compose up -d --build
 ```
 
-Then visit `http://<nas-ip>:8765` from a phone on the same network.
+Then visit `http://<zimaboard-ip>:8765` from a phone on the same network.
 
-If you build images on Apple Silicon for the DS713+, target x86_64:
-`docker buildx build --platform linux/amd64 ...`.
+The Zimaboard 2 is x86_64 (Intel N150). If you build images on Apple Silicon,
+target x86_64: `docker buildx build --platform linux/amd64 ...`.
 
 ## Data layout
 
@@ -115,5 +117,14 @@ data/
 - **`/next.bin` returns 404 "queue empty"** — open `/pick` and add photos.
 - **`invalid_grant` on startup** — refresh token expired (7-day Testing limit).
   Delete `data/tokens.json` and re-run `npm run pick` to re-auth.
-- **Container can't reach Google** — check the NAS's outbound DNS / proxy. The
+- **Container can't reach Google** — check the Zimaboard's outbound DNS / proxy. The
   Picker API requires outbound HTTPS from the container.
+
+## Credits
+
+The image pipeline in `src/imaging/` is an in-house port of
+[epdoptimize](https://github.com/paperlesspaper/epdoptimize) by paperlesspaper
+(Apache-2.0), which itself builds on
+[aitjcize/epaper-image-convert](https://github.com/aitjcize/epaper-image-convert)
+and [GuySie/opendithering](https://github.com/GuySie/opendithering), among
+others. Full attribution and license: [`CREDITS.md`](CREDITS.md).
