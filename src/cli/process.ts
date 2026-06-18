@@ -7,6 +7,7 @@ import {
   defaultConfig,
   imageToPng,
   processImage,
+  rotateForPanel,
   type PipelineStage,
 } from '../imaging/pipeline.js';
 import type { Image } from '../imaging/toneMap.js';
@@ -48,7 +49,10 @@ async function main() {
   const tProcess = Date.now() - t0;
 
   const t1 = Date.now();
-  const { buffer: packed, unmatched } = packDeviceColors(finalImage, aitjcizeSpectra6, format);
+  // Rotate into the panel's native 1200×1600 orientation before packing, same
+  // as the server's processToPacked path. See PANEL_ROTATION in pipeline.ts.
+  const panelImage = await rotateForPanel(finalImage);
+  const { buffer: packed, unmatched } = packDeviceColors(panelImage, aitjcizeSpectra6, format);
   const tPack = Date.now() - t1;
 
   const binPath = path.join(QUEUE_DIR, `${hash}.bin`);

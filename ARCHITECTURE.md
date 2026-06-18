@@ -227,11 +227,16 @@ the container is rebuilt from the Dockerfile.
    to the nearest palette color via ΔE in LAB.
 6. Walk the buffer and replace each calibrated palette color with its device
    color counterpart.
-7. Pack each pixel to a palette index (0-5) and write to `queue/<hash>.bin`.
-   Exact packing layout TBD — the firmware spec drives this. Two candidates:
-   true 3bpp (8 px per 3 bytes, ~720 KB at 1600×1200) or 4bpp nibble-packed
-   (~960 KB at 1600×1200, simpler ESP32-side).
-8. Optionally save the source JPG to `cache/`.
+7. Rotate the upright 1600×1200 result 90° into the panel's native 1200×1600
+   orientation (`rotateForPanel` / `PANEL_ROTATION`). The firmware copies
+   `/next.bin` byte-for-byte into a framebuffer the GDEP133C02 driver walks as
+   1200 px wide (600 bytes/row) × 1600 px tall, so the packed buffer's row
+   stride must match that or the panel shows garbage. Previews are generated
+   from the pre-rotation (upright) image so they read naturally on a phone.
+8. Pack each pixel to a palette index (0-5) and write to `queue/<hash>.bin`.
+   Default is 4bpp nibble-packed (960 KB = 960,000 bytes, simpler ESP32-side);
+   the CLI also supports true 3bpp (8 px per 3 bytes, ~720 KB).
+9. Optionally save the source JPG to `cache/`.
 
 For each step the dev CLI can dump an intermediate PNG (sharp re-encodes the
 buffer) so visual regressions are easy to spot.

@@ -85,6 +85,44 @@ export const processImage = async (
   return img;
 };
 
+/**
+ * Panel buffer orientation.
+ *
+ * The firmware copies `/next.bin` byte-for-byte into the panel framebuffer and
+ * the GDEP133C02 driver walks it as 1200 px wide (600 bytes/row) × 1600 px tall
+ * (`EPD_WIDTH`/`EPD_HEIGHT` in src/eink/GDEP133C02.c). The pipeline produces an
+ * upright 1600×1200 landscape image (so on-screen previews look natural), so the
+ * packed buffer MUST be rotated 90° into the driver's native 1200×1600 portrait
+ * layout — otherwise the row stride is wrong and the panel shows garbage.
+ *
+ * Only 90 and 270 swap width↔height to match the driver geometry; pick whichever
+ * makes photos upright on the physical panel, and toggle PANEL_FLIP if the image
+ * comes out mirrored. (This is the server-side counterpart of the firmware's
+ * "Color remap orientation" / mirrored-image caveat.)
+ */
+export const PANEL_ROTATION: 90 | 270 = 90;
+export const PANEL_FLIP = false;
+
+/**
+ * Rotate (and optionally mirror) the device-color image into the panel's native
+ * orientation. Rotation is by a multiple of 90°, so sharp does an exact pixel
+ * move with no resampling — device colors are preserved and still pack to exact
+ * palette indices.
+ */
+export const rotateForPanel = async (img: Image): Promise<Image> => {
+  let pipe = sharp(
+    Buffer.from(img.data.buffer, img.data.byteOffset, img.data.length),
+    { raw: { width: img.width, height: img.height, channels: 4 } },
+  ).rotate(PANEL_ROTATION);
+  if (PANEL_FLIP) pipe = pipe.flop();
+  const { data, info } = await pipe.raw().toBuffer({ resolveWithObject: true });
+  return {
+    width: info.width,
+    height: info.height,
+    data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.length),
+  };
+};
+
 export interface ProcessToPackedOptions {
   config?: PipelineConfig;
   format?: PackFormat;
@@ -105,7 +143,10 @@ export const processToPacked = async (
   const config = opts.config ?? defaultConfig;
   const format: PackFormat = opts.format ?? 'nibble4bpp';
   const finalImage = await processImage(input, config);
-  const { buffer: packed, unmatched } = packDeviceColors(finalImage, config.palette, format);
+  // Pack in the panel's native orientation (1200×1600), not the upright
+  // landscape the pipeline renders for previews. See PANEL_ROTATION.
+  const panelImage = await rotateForPanel(finalImage);
+  const { buffer: packed, unmatched } = packDeviceColors(panelImage, config.palette, format);
   const hash = createHash('sha256').update(input).digest('hex').slice(0, 16);
   return { packed, format, hash, unmatched };
 };

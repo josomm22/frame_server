@@ -31,6 +31,7 @@ import {
 } from './queue.js';
 import { homePage } from './views/home.js';
 import { pickPage } from './views/pick.js';
+import { uploadPage } from './views/upload.js';
 
 const PORT = parseInt(process.env.PORT ?? '8765', 10);
 const QUEUE_DIR = path.resolve('data/queue');
@@ -131,6 +132,11 @@ app.post('/preview/simulate', upload.single('image'), async (req: Request, res: 
 });
 
 // ── Upload (add to queue) ────────────────────────────────────────────────────
+
+// Standalone, guest-friendly upload page (no admin/queue controls).
+app.get('/upload', (_req: Request, res: Response) => {
+  res.type('html').send(uploadPage());
+});
 
 app.post('/upload', upload.single('image'), async (req: Request, res: Response) => {
   const file = (req as Request & { file?: Express.Multer.File }).file;
