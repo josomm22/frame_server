@@ -1,3 +1,4 @@
+// Ported from epdoptimize (paperlesspaper), Apache-2.0. See CREDITS.md.
 import type { RGB } from './palette.js';
 
 export type Lab = [number, number, number];
@@ -12,6 +13,42 @@ export const clampByte = (v: number): number => {
 
 export const luma709 = (r: number, g: number, b: number): number =>
   0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+/** HSV-style saturation in [0, 1]: (max - min) / max. */
+export const getSaturation = (r: number, g: number, b: number): number => {
+  const max = Math.max(r, g, b) / 255;
+  const min = Math.min(r, g, b) / 255;
+  return max === 0 ? 0 : (max - min) / max;
+};
+
+/** Hue in degrees [0, 360). */
+export const getHue = (r: number, g: number, b: number): number => {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+  if (delta === 0) return 0;
+  let hue: number;
+  if (max === rn) hue = 60 * (((gn - bn) / delta) % 6);
+  else if (max === gn) hue = 60 * ((bn - rn) / delta + 2);
+  else hue = 60 * ((rn - gn) / delta + 4);
+  return hue < 0 ? hue + 360 : hue;
+};
+
+/** Shortest angular distance between two hues in degrees [0, 180]. */
+export const getHueDistance = (a: number, b: number): number => {
+  const delta = Math.abs(a - b) % 360;
+  return Math.min(delta, 360 - delta);
+};
+
+/** Smooth Hermite interpolation; 0 below edge0, 1 above edge1. */
+export const smoothstep = (edge0: number, edge1: number, value: number): number => {
+  if (edge1 <= edge0) return value >= edge1 ? 1 : 0;
+  const x = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return x * x * (3 - 2 * x);
+};
 
 const rgbToXyz = (r: number, g: number, b: number): RGB => {
   let rn = r / 255;

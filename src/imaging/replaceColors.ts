@@ -1,3 +1,4 @@
+// Ported from epdoptimize (paperlesspaper), Apache-2.0. See CREDITS.md.
 import type { PaletteEntry } from './palette.js';
 import type { Image } from './toneMap.js';
 

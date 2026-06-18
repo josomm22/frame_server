@@ -1,6 +1,6 @@
 # eink-frame — Architecture & Handoff
 
-A digital photo frame system: Google Photos → Synology NAS server → custom-firmware
+A digital photo frame system: Google Photos → Zimaboard 2 server → custom-firmware
 e-paper frame over LAN.
 
 This document captures all decisions made before code was written, so future work
@@ -19,19 +19,20 @@ doesn't re-litigate them.
 
 **Server side**
 
-- Synology DS713+ (Intel Atom CE5335, x86_64, 2 GB RAM, 2013 hardware)
-- DSM 7.1.1-42962 Update 9 (terminal release for this model — Synology will not
-  ship DSM 7.2/7.3 for the 713+)
-- Container runtime: legacy **Docker** package from Package Center
-  (Container Manager is DSM 7.2+ only, so it is not available)
-- Available headroom: ~1.2-1.4 GB free RAM at typical idle
+- Zimaboard 2 (Intel N150 quad-core "Twin Lake", x86_64, 8 or 16 GB LPDDR5,
+  32/64 GB eMMC, fanless)
+- ZimaOS (Debian-based, an evolution of CasaOS) pre-installed
+- Container runtime: modern **Docker** engine (ZimaOS ships Docker + compose;
+  apps also installable from the ZimaOS app store)
+- Available headroom: ample — 8 GB minimum, vs. the ~150 MB the Node container
+  needs at idle
 
 ## High-level flow
 
 ```
-[User on phone]                    [Synology DS713+]                 [EE02 frame]
+[User on phone]                    [Zimaboard 2]                     [EE02 frame]
       |                                   |                                |
-      |---- visits http://nas:8765 ------>|                                |
+      |-- visits http://zimaboard:8765 -->|                                |
       |<--- "Refresh" page + QR code -----|                                |
       |                                   |                                |
       |--- opens pickerUri in Google      |                                |
@@ -80,17 +81,18 @@ deliberate human action triggered every few weeks from a phone.
   that the user found and validated visually. Using it directly avoids a
   cross-language port.
 
-### Why Docker (not the DSM Node.js package)
+### Why Docker (not a host Node install)
 
-- DSM 7.1's native Node package is locked to v18 and ages out as Synology
-  decides.
-- `node-canvas` requires system libraries (Cairo, Pango, libjpeg, libgif,
-  librsvg) that are awkward to install on bare DSM — no apt, Entware hacks
-  break across DSM updates.
-- Container brings its own Node version and its own system libraries. Host
-  DSM version becomes irrelevant.
-- Docker package on DSM 7.1 supports compose, volume mounts, restart policies —
-  everything needed. Just a clunkier UI than Container Manager.
+- A container pins its own Node version, decoupled from whatever ZimaOS ships,
+  so the runtime doesn't drift with host OS updates.
+- `node-canvas` historically required system libraries (Cairo, Pango, libjpeg,
+  libgif, librsvg); bundling them in the image keeps the host clean. (The
+  in-house epdoptimize port drops node-canvas entirely — see below — but the
+  container isolation is still worth keeping.)
+- ZimaOS ships a modern Docker engine with compose, volume mounts, and restart
+  policies, and can also manage the container from its app store UI.
+- Reproducible: the whole server rebuilds from the Dockerfile, so the box is
+  disposable and easy to re-flash or replace.
 
 ### Why an in-house port of epdoptimize (not the npm dep, not a custom-from-scratch ditherer)
 
@@ -104,12 +106,19 @@ Why epdoptimize's algorithms (vs. a naive ditherer):
 - Two-palette system: dithers against measured/calibrated panel colors, then
   swaps to native device colors at output. Without this, the algorithm doesn't
   know the panel's "red" actually displays as brick/maroon, and quality suffers.
-- LAB color matching (vs. naive RGB Euclidean distance).
+- Color matching modes: naive RGB Euclidean, perceptual LAB ΔE (default), and
+  `chroma` — RGB distance plus chroma/hue penalties (ported from epdoptimize
+  1.3.0) that bias saturated source pixels away from gray/black/white and toward
+  the right hue, so colourful regions don't collapse to neutral on 6 colors.
 - LAB lightness dynamic range compression — addresses the single biggest issue
-  with limited-palette displays (photos crushing into pure black/white).
+  with limited-palette displays (photos crushing into pure black/white). Now
+  includes epdoptimize 1.3.0's chroma protection: compression strength eases off
+  on saturated pixels and a binary-search "chroma guard" backs off the lightness
+  push when it would wash a saturated color toward gray.
 - Tone mapping (exposure, saturation, S-curve) tuned for e-paper.
-- Floyd-Steinberg error diffusion with serpentine scanning. Other kernels
-  (Atkinson, Stucki, Jarvis, Sierra, Burkes) are easy to port if needed.
+- Floyd-Steinberg error diffusion with serpentine scanning (default). The full
+  epdoptimize kernel set (Atkinson, Jarvis, Stucki, Burkes, Sierra 2/3/2-4a,
+  false-Floyd-Steinberg) is ported in `diffusionKernels` for per-panel tuning.
 - Battle-tested: epdoptimize is published by paperlesspaper, who sell Spectra 6
   frames commercially and use this library in their product.
 
@@ -119,8 +128,8 @@ Why port instead of `npm install`:
   API takes a `CanvasLike` (just `getImageData` / `putImageData`); under the
   hood it operates on a `Uint8ClampedArray` of RGBA bytes. We feed it raw
   `sharp` output directly. Cairo/Pango/libjpeg/librsvg are no longer required
-  on the host — a meaningful simplification for the Synology install, where
-  the original Docker rationale was largely "node-canvas is awkward on bare DSM".
+  at all — a meaningful simplification that also shrinks the image, since the
+  original Docker rationale was largely "node-canvas is awkward to install".
 - Full understanding of the pipeline; trivial to tweak per-image parameters or
   swap kernels for our specific panel without forking and republishing.
 
@@ -130,15 +139,25 @@ processing config and adjust by hand. Can be added later if visual results
 suggest auto-tuning is worth the complexity.
 
 Starting palette: `aitjcize-spectra6`, copied verbatim from epdoptimize's
-`default-palettes.json`. Plan to recalibrate once the physical panel is in
-hand by adjusting the calibrated `color` values; the two-palette format makes
-this a config change, not a code change.
+`default-palettes.json`. epdoptimize 1.3.0 added a second Spectra 6 calibration,
+`spectra6-boeber`, also copied verbatim (`spectra6Boeber` in `palette.ts`) as an
+alternative to compare once the panel is in hand. Plan to recalibrate against
+our own panel by adjusting the calibrated `color` values; the two-palette format
+makes this a config change, not a code change.
+
+Sync provenance: the in-house pieces were last reconciled against upstream
+epdoptimize **1.3.0** (`vendor/epdoptimize` @ `cc15cc5`). The 1.3.0 algorithm
+improvements relevant to our minimal pipeline — `chroma` matching, DRC chroma
+protection, the extra diffusion kernels, the boeber palette — are folded in.
+Still skipped (same rationale as below): the auto classifier/preset zoo, plus
+1.3.0's async/worker and WASM execution paths and the ordered/blue-noise/level
+and paper-normalization stages, which our single hardcoded config doesn't use.
 
 ### Why LAN-only, no auth
 
 - Single-user system on a trusted home network.
 - No need to expose to the internet — Picker API uses outbound calls from
-  the NAS to Google.
+  the Zimaboard to Google.
 - Reduces attack surface and operational complexity. Can revisit if needs
   change.
 
@@ -156,8 +175,8 @@ node:20-alpine
 In-house, src/imaging/:
 ├── palette.ts           — aitjcize-spectra6 calibrated/device color pairs
 ├── colorspace.ts        — RGB <-> LAB, deltaE, luma709
-├── toneMap.ts           — exposure / saturation / contrast / S-curve / LAB DRC
-├── dither.ts            — Floyd-Steinberg error diffusion + serpentine scan
+├── toneMap.ts           — exposure / saturation / contrast / S-curve / LAB DRC (+chroma guard)
+├── dither.ts            — error diffusion (kernel set) + serpentine + rgb/lab/chroma matching
 ├── replaceColors.ts     — exact-match calibrated -> device swap
 └── pipeline.ts          — orchestrates resize + tone map + dither + replace + 3bpp pack
 ```
@@ -176,7 +195,8 @@ Optional: `node-cron` if a periodic cleanup or token-refresh task is wanted.
 
 ### Persistent data
 
-Container path `/app/data` ← bind-mounted from host `/volume1/docker/eink-frame/data`.
+Container path `/app/data` ← bind-mounted from the host `./data` next to the
+compose file (e.g. `/DATA/eink-frame/data` on ZimaOS).
 
 ```
 /app/data/
@@ -225,14 +245,22 @@ buffer) so visual regressions are easy to spot.
 - ESP32 reads bytes directly into panel buffer, triggers refresh, deep sleeps.
 - 720 KB transfer over WiFi is trivial compared to the 12-second panel refresh.
 
-## Synology-specific gotchas
+## Zimaboard 2 / ZimaOS notes
 
-1. **Volume paths must include the volume number.** Compose `/volume1/docker/eink-frame/data:/app/data`, not `~/docker/...` or relative paths.
-2. **DSM 7.1 Docker GUI has no "Project" tab.** Manage compose via SSH and `docker-compose` CLI. Docker GUI is for browsing containers and viewing logs only.
-3. **SSH must be enabled** for initial deploy: Control Panel → Terminal & SNMP → Enable SSH.
-4. **DSM uses many ports.** Project uses **8765**. Avoid 5000, 5001, 80, 443, 6690.
-5. **Build for x86_64.** DS713+ is Intel x86_64. If developing on Apple Silicon, build with `--platform linux/amd64` or use buildx, otherwise images won't run on the NAS.
-6. **Use `network_mode: host`.** Bridge networking is unreliable on the DS713+ kernel under DSM 7.1's legacy Docker — the bridge/NAT setup intermittently fails and the container ends up in a restart loop. Host mode sidesteps the bridge entirely and binds 8765 directly on the NAS, which is what the LAN-only design wants. `ports:` mappings are incompatible with host mode and must be removed.
+1. **Put `data/` and `credentials.json` next to the compose file.** The compose
+   uses relative bind mounts (`./data`, `./credentials.json`), so clone the repo
+   somewhere persistent — `/DATA` is ZimaOS's storage root, e.g.
+   `/DATA/eink-frame`.
+2. **Manage compose via SSH or the ZimaOS terminal app.** `docker compose up -d
+   --build` from the repo directory. ZimaOS can also adopt/manage the running
+   container from its app/container UI.
+3. **Standard bridge networking is fine.** The DS713+ host-mode workaround is
+   gone — the `ports: ["8765:8765"]` mapping binds 8765 on the host.
+4. **Pick an unused port.** Project uses **8765**; keep clear of anything ZimaOS
+   services already bind (the web UI, Samba, etc.).
+5. **Build for x86_64.** Zimaboard 2 is Intel N150 (x86_64). If developing on
+   Apple Silicon, build with `--platform linux/amd64` or use buildx, otherwise
+   images won't run on the box.
 
 ## Out of scope for v1
 
@@ -247,13 +275,13 @@ buffer) so visual regressions are easy to spot.
 
 ## Development workflow
 
-1. Develop and test locally on x86_64 dev machine. Don't develop on the NAS.
+1. Develop and test locally on x86_64 dev machine. Don't develop on the Zimaboard.
 2. End-to-end milestones, in order:
    - **Milestone 1**: CLI script — create picker session, print URL, poll, download bytes. No Express, no Docker yet. Validates Google's flow.
    - **Milestone 2**: Add the image pipeline. Process one downloaded photo end-to-end into a `.bin` file. Verify visually as PNG before binary packing.
    - **Milestone 3**: Wrap in Express. Add `/`, `/pick`, `/pick/status`, `/next.bin`. Test from a browser and `curl`.
    - **Milestone 4**: Dockerize. Test container locally on dev machine.
-   - **Milestone 5**: Deploy to NAS. Verify auto-restart, persistence, ESP32 fetches.
+   - **Milestone 5**: Deploy to the Zimaboard. Verify auto-restart, persistence, ESP32 fetches.
 3. Use git from milestone 1.
 4. OAuth client setup is browser-only — Google Cloud Console, enable Photos
    Picker API, create "Desktop app" OAuth client, add yourself as a test user
@@ -275,7 +303,10 @@ buffer) so visual regressions are easy to spot.
 ## References
 
 - epdoptimize: https://github.com/paperlesspaper/epdoptimize
+  (Apache-2.0; the `src/imaging/` pipeline is an in-house port — see `CREDITS.md`)
 - Google Photos Picker API: https://developers.google.com/photos/picker
 - aitjcize/epaper-image-convert (origin of the calibrated palette):
   https://github.com/aitjcize/epaper-image-convert
 - Seeed XIAO ePaper EE02: https://www.seeedstudio.com/XIAO-ePaper-DIY-Kit-EE02-for-13-3-Spectratm-6-E-Ink.html
+
+Full attribution chain (epdoptimize and the projects it builds on): `CREDITS.md`.

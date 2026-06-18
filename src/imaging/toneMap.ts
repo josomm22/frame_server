@@ -1,4 +1,14 @@
-import { clamp, clampByte, labToRgb, luma709, rgbToLab } from './colorspace.js';
+// Ported from epdoptimize (paperlesspaper), Apache-2.0. Algorithms are derived
+// verbatim; only the I/O is reshaped. See CREDITS.md.
+import {
+  clamp,
+  clampByte,
+  getSaturation,
+  labToRgb,
+  luma709,
+  rgbToLab,
+  smoothstep,
+} from './colorspace.js';
 import type { RGB } from './palette.js';
 
 export interface Image {
@@ -146,11 +156,88 @@ export const applyToneMapping = (
   }
 };
 
-const percentile = (vals: number[], p: number): number => {
-  if (vals.length === 0) return 0;
-  const sorted = vals.slice().sort((a, b) => a - b);
-  const idx = clamp(Math.round((sorted.length - 1) * p), 0, sorted.length - 1);
-  return sorted[idx];
+// LAB lightness is 0..100; one bin per 0.5 L gives ample resolution for
+// percentile estimation without sorting a ~2M-element array per image.
+const LIGHTNESS_BINS = 201;
+const LIGHTNESS_SCALE = (LIGHTNESS_BINS - 1) / 100;
+
+const percentileFromHistogram = (
+  histogram: Uint32Array,
+  count: number,
+  p: number,
+): number => {
+  if (count === 0) return 0;
+  const target = clamp(Math.round((count - 1) * p), 0, count - 1);
+  let seen = 0;
+  for (let bin = 0; bin < histogram.length; bin++) {
+    seen += histogram[bin];
+    if (seen > target) return bin / LIGHTNESS_SCALE;
+  }
+  return 100;
+};
+
+// Chroma protection (epdoptimize 1.3.0). Saturated pixels suffer most from
+// lightness compression — they slide toward gray or clip out of gamut. These
+// helpers (1) scale compression strength down on saturated pixels and (2)
+// back off the lightness push until the result keeps enough chroma.
+const getDynamicRangeChromaProtection = (r: number, g: number, b: number): number =>
+  smoothstep(0.18, 0.68, getSaturation(r, g, b)) * 0.85;
+
+const CHROMA_GUARD_STEPS = 5;
+
+const isProtectedChromaFit = (
+  sourceLuma: number,
+  rr: number,
+  rg: number,
+  rb: number,
+  sourceSaturation: number,
+): boolean => {
+  if (sourceSaturation < 0.16) return true;
+  const resultSaturation = getSaturation(rr, rg, rb);
+  const minimumSaturation = Math.max(0.12, sourceSaturation * 0.72);
+  if (resultSaturation >= minimumSaturation) return true;
+  // Allow desaturation only if it isn't also brightening the pixel.
+  return luma709(rr, rg, rb) <= sourceLuma + 4;
+};
+
+const labToRgbWithChromaGuard = (
+  sr: number,
+  sg: number,
+  sb: number,
+  sourceL: number,
+  a: number,
+  b: number,
+  targetL: number,
+  amount: number,
+): RGB => {
+  const sourceSaturation = getSaturation(sr, sg, sb);
+  const sourceLuma = luma709(sr, sg, sb);
+  const toRgb = (fit: number): RGB => labToRgb(sourceL + (targetL - sourceL) * fit, a, b);
+  const result = toRgb(amount);
+
+  // Darkening never washes colour out, so only guard brightening.
+  if (
+    targetL <= sourceL ||
+    isProtectedChromaFit(sourceLuma, result[0], result[1], result[2], sourceSaturation)
+  ) {
+    return result;
+  }
+
+  // Binary-search the largest compression amount that still preserves chroma.
+  let low = 0;
+  let high = amount;
+  let protectedResult: RGB = [sr, sg, sb];
+  for (let step = 0; step < CHROMA_GUARD_STEPS; step++) {
+    const mid = (low + high) / 2;
+    const candidate = toRgb(mid);
+    if (isProtectedChromaFit(sourceLuma, candidate[0], candidate[1], candidate[2], sourceSaturation)) {
+      low = mid;
+      protectedResult = candidate;
+    } else {
+      high = mid;
+    }
+  }
+  return protectedResult;
 };
 
 const getPaletteLuminanceWindow = (palette: RGB[]): { blackL: number; whiteL: number } => {
@@ -183,25 +270,35 @@ export const applyDynamicRangeCompression = (
   let sourceBlackL = 0;
   let sourceWhiteL = 100;
   if (mode === 'auto') {
-    const ls: number[] = [];
+    const histogram = new Uint32Array(LIGHTNESS_BINS);
+    let count = 0;
     for (let i = 0; i < d.length; i += 4) {
       const [l] = rgbToLab(d[i], d[i + 1], d[i + 2]);
-      ls.push(l);
+      const bin = clamp(Math.round(l * LIGHTNESS_SCALE), 0, LIGHTNESS_BINS - 1);
+      histogram[bin]++;
+      count++;
     }
-    sourceBlackL = percentile(ls, opts.lowPercentile ?? 0.01);
-    sourceWhiteL = percentile(ls, opts.highPercentile ?? 0.99);
+    sourceBlackL = percentileFromHistogram(histogram, count, opts.lowPercentile ?? 0.01);
+    sourceWhiteL = percentileFromHistogram(histogram, count, opts.highPercentile ?? 0.99);
   }
   const sourceRange = sourceWhiteL - sourceBlackL;
   if (sourceRange <= 1e-4) return;
 
   for (let i = 0; i < d.length; i += 4) {
-    const [l, a, b] = rgbToLab(d[i], d[i + 1], d[i + 2]);
+    const r = d[i];
+    const g = d[i + 1];
+    const blue = d[i + 2];
+    const [l, a, b] = rgbToLab(r, g, blue);
     const normalizedL = clamp((l - sourceBlackL) / sourceRange, 0, 1);
     const compressedL = blackL + normalizedL * targetRange;
-    const blendedL = l + (compressedL - l) * strength;
-    const [r, g, blue] = labToRgb(blendedL, a, b);
-    d[i]     = r;
-    d[i + 1] = g;
-    d[i + 2] = blue;
+    // Ease off the compression on saturated pixels, then guard the remainder.
+    const chromaProtection = getDynamicRangeChromaProtection(r, g, blue);
+    const effectiveStrength = strength * (1 - chromaProtection);
+    const [nr, ng, nb] = labToRgbWithChromaGuard(
+      r, g, blue, l, a, b, compressedL, effectiveStrength,
+    );
+    d[i]     = nr;
+    d[i + 1] = ng;
+    d[i + 2] = nb;
   }
 };
