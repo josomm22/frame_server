@@ -1,8 +1,11 @@
 # Compose file targets Zimaboard 2 deployment. See ARCHITECTURE.md.
 # Zimaboard 2 runs ZimaOS (Debian-based) with a modern Docker engine, so the
-# DS713+ workarounds are gone: standard bridge networking with a `ports:` mapping
-# works fine, and relative volume paths resolve against the repo directory.
-# For local dev testing, use `docker run` directly with your own paths.
+# DS713+ workarounds are gone: standard bridge networking with a `ports:` mapping.
+#
+# Persistent data lives in ZimaOS AppData (/DATA/AppData/eink-frame), NOT next to
+# the repo — the repo is only the build context, so it can be re-cloned or wiped
+# without touching tokens/queue/credentials. For local dev testing, use
+# `docker run` directly with your own paths (see README "Docker (local test)").
 
 services:
   eink-frame:
@@ -13,5 +16,5 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - ./data:/app/data
-      - ./credentials.json:/app/credentials.json:ro
+      - /DATA/AppData/eink-frame/data:/app/data
+      - /DATA/AppData/eink-frame/credentials.json:/app/credentials.json:ro
