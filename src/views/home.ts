@@ -1,3 +1,4 @@
+import type { DeviceTelemetry } from '../device.js';
 import { layout } from './layout.js';
 
 export interface QueueItem {
@@ -5,7 +6,55 @@ export interface QueueItem {
   hasPreview: boolean;
 }
 
-export const homePage = (items: QueueItem[], lastRefreshAt: Date | null): string => {
+const timeAgo = (d: Date): string => {
+  const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (secs < 60) return 'just now';
+  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)} h ago`;
+  return `${Math.floor(secs / 86400)} d ago`;
+};
+
+// MAC and firmware version are validated to safe charsets before they are
+// stored (see recordDeviceTelemetry), so they can be interpolated directly.
+const devicesSection = (devices: DeviceTelemetry[]): string => {
+  const rows =
+    devices.length === 0
+      ? ''
+      : `<table>
+      <tr><th>Device</th><th>Firmware</th><th>Battery</th><th>Last seen</th></tr>
+      ${devices
+        .map((d) => {
+          const mac = d.mac.match(/.{2}/g)!.join(':');
+          const battery =
+            d.batteryPercent === null
+              ? '—'
+              : `${d.batteryPercent}%${d.batteryVoltage === null ? '' : ` (${d.batteryVoltage.toFixed(2)} V)`}`;
+          return `<tr>
+        <td class="mono">${mac}</td>
+        <td class="mono">${d.firmwareVersion ?? '—'}</td>
+        <td>${battery}</td>
+        <td>${timeAgo(d.lastSeen)}</td>
+      </tr>`;
+        })
+        .join('')}
+    </table>`;
+
+  return `
+<div class="card">
+  <h2>Devices</h2>
+  ${
+    devices.length === 0
+      ? `<p class="meta">No devices have checked in since the server started.</p>`
+      : rows
+  }
+</div>`;
+};
+
+export const homePage = (
+  items: QueueItem[],
+  lastRefreshAt: Date | null,
+  devices: DeviceTelemetry[],
+): string => {
   const last = lastRefreshAt ? lastRefreshAt.toLocaleString() : '(never)';
   const count = items.length;
 
@@ -40,6 +89,8 @@ export const homePage = (items: QueueItem[], lastRefreshAt: Date | null): string
   </div>
   ${gallery}
 </div>
+
+${devicesSection(devices)}
 
 <div class="card">
   <h2>Upload a photo</h2>

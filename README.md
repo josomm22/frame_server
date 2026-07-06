@@ -58,7 +58,31 @@ All LAN-only, no auth.
 | GET    | `/pick`          | Creates picker session, shows QR + link for the phone           |
 | GET    | `/pick/status`   | Polled by the `/pick` page; returns `pending`/`processing`/`done` |
 | GET    | `/next.bin`      | ESP32 endpoint. Returns one random `.bin` from the queue        |
+| GET    | `/firmware/version` | ESP32 endpoint. Published OTA version string (404 = no release) |
+| GET    | `/firmware/latest.bin` | ESP32 endpoint. OTA binary, with `X-Firmware-MD5` header (404 = no release) |
+| GET    | `/firmware`      | OTA publishing page: current release + upload form              |
+| POST   | `/firmware`      | Publishes a release (multipart: `version` text + `firmware` file) |
 | POST   | `/admin/clear`   | Wipes the queue                                                 |
+
+### OTA releases
+
+Publish a release on the `/firmware` page: enter the version string and upload
+the compiled binary (built from `seeed_eink_board` with `uv run pio run`,
+binary at `.pio/build/seeed_xiao_esp32s3/firmware.bin`). The server stores the
+pair in `data/firmware/` and starts serving it to devices.
+
+On each wake a device compares `/firmware/version` against its own version by
+plain inequality — there is no semver ordering, so publishing an older version
+deliberately rolls devices back. **The version entered must exactly match the
+`FIRMWARE_VERSION` compiled into the uploaded binary**: if they differ, devices
+detect the mismatch after one flash and stop retrying, leaving the release
+effectively broken.
+
+Every device request carries `X-Device-MAC`, `X-Firmware-Version`, and (when
+the reading succeeds) `X-Battery-Voltage` / `X-Battery-Percent` headers. The
+server logs them and shows the latest per-device values in the "Devices"
+section of the home page (in-memory only — it repopulates on the next device
+wake after a restart).
 
 ## Docker (local test)
 
@@ -131,10 +155,13 @@ from the Dockerfile.
 
 ```
 data/
-├── tokens.json       # OAuth refresh token (chmod 600)
-├── queue/<hash>.bin  # packed framebuffers ready for the panel
-├── cache/            # original downloaded JPEGs (process CLI / debug)
-└── debug/            # per-stage PNG dumps from `npm run process`
+├── tokens.json          # OAuth refresh token (chmod 600)
+├── firmware/            # published OTA release (written via the /firmware page)
+│   ├── firmware.bin     # the binary served to devices
+│   └── version.txt      # its version string
+├── queue/<hash>.bin     # packed framebuffers ready for the panel
+├── cache/               # original downloaded JPEGs (process CLI / debug)
+└── debug/               # per-stage PNG dumps from `npm run process`
 ```
 
 ## Troubleshooting

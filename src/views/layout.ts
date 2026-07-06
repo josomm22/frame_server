@@ -74,6 +74,17 @@ h2 { font-size: .95rem; font-weight: 600; margin-bottom: .6rem; text-transform: 
   background: var(--bg); border: 1px solid var(--border);
   border-radius: 6px; font-size: .875rem;
 }
+table { border-collapse: collapse; width: 100%; margin-top: .75rem; font-size: .875rem; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+.mono { font-family: monospace; }
+.notice {
+  margin-top: .75rem; padding: .7rem 1rem; font-size: .875rem;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
+}
+.banner { margin-top: .75rem; padding: .7rem 1rem; font-size: .875rem; border-radius: 6px; }
+.banner-success { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.banner-error { background: #fef2f2; border: 1px solid #fca5a5; color: var(--danger); }
 .spinner {
   display: inline-block; width: .9em; height: .9em;
   border: 2px solid currentColor; border-top-color: transparent;
@@ -87,7 +98,7 @@ h2 { font-size: .95rem; font-weight: 600; margin-bottom: .6rem; text-transform: 
 <body>
 <header>
   <h1>eink-frame</h1>
-  <nav><a href="/">home</a></nav>
+  <nav><a href="/">home</a> &nbsp; <a href="/firmware">firmware</a></nav>
 </header>
 <main>${body}</main>
 </body></html>`;
